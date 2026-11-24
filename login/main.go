@@ -27,7 +27,6 @@ import (
 	"os"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/mautrix-meta/pkg/messagix"
@@ -44,8 +43,8 @@ var bridgeVersion = "0.1.0"
 
 var capabilities = []string{"loginStart", "loginSubmit", "loginWait", "loginCancelStep"}
 
-// Mỗi bước gọi mạng của Facebook; quá thì báo lỗi để Cell hỏi lại người dùng.
-const stepTimeout = 3 * time.Minute
+// Một context cho CẢ lượt đăng nhập (bloks giữ vòng hỏi nền giữa các bước); huỷ khi tiến trình kết thúc.
+var sessionCtx, cancelSession = context.WithCancel(context.Background())
 
 type request struct {
 	ID     uint64          `json:"id"`
@@ -99,9 +98,10 @@ func proceed(id uint64, input map[string]string) {
 		fail(id, fmt.Errorf("loginStart chưa chạy"))
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), stepTimeout)
-	defer cancel()
-	step, newCookies, err := client.MessengerLite.DoLoginSteps(ctx, input)
+	// [2026-11-24] Chạy thật: bước "duyệt trên thiết bị khác" (AFAD) để bloks chạy vòng hỏi nền (afad_state.async) bằng CHÍNH context của bước;
+	// huỷ context khi bước trả lời ⇒ vòng hỏi chết, duyệt xong vẫn lỗi "context canceled". Cả lượt dùng một context sống suốt tiến trình;
+	// hạn giờ từng lệnh do Cell lo (RPC timeout + đóng tiến trình khi huỷ lượt).
+	step, newCookies, err := client.MessengerLite.DoLoginSteps(sessionCtx, input)
 	if err != nil {
 		fail(id, err)
 		return
@@ -176,9 +176,7 @@ func handle(req *request) {
 			fail(req.ID, fmt.Errorf("loginStart chưa chạy"))
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), stepTimeout)
-		err := client.MessengerLite.CancelLoginStep(ctx)
-		cancel()
+		err := client.MessengerLite.CancelLoginStep(sessionCtx)
 		if err != nil {
 			fail(req.ID, err)
 			return
@@ -209,4 +207,5 @@ func main() {
 		// Tuần tự: luồng bloks giữ trạng thái, không chạy hai bước cùng lúc.
 		handle(&req)
 	}
+	cancelSession()
 }

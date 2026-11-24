@@ -23,6 +23,10 @@ RUN git clone --quiet "$FBCHAT_REPO" /src \
  && git clone --quiet "$META_REPO" /meta-login && git -C /meta-login checkout --quiet "$META_LOGIN_SHA"
 WORKDIR /src/bridge-e2ee
 RUN go mod download
+# Bản vá nhỏ của repo này lên bridge fbchat-v2 (xem patches/). 0001: deviceData "new" = thiết bị mới trong bộ nhớ, trạng thái chỉ ra qua
+# sự kiện deviceDataChanged (chạy thật 2026-11-24: nick mới chưa có thiết bị ⇒ bridge tự ghi ./.e2ee_device.json trần ⇒ permission denied).
+COPY patches/ /patches/
+RUN cd /src && for p in /patches/*.patch; do git apply --verbose "$p"; done
 RUN EXT=$([ "$GOOS" = "windows" ] && echo .exe || true) \
  && GOOS=$GOOS GOARCH=$GOARCH go build -mod=mod -trimpath -ldflags "-s -w" -o /out/fbchat-bridge-e2ee$EXT .
 # fbchat-login dựng NGAY TRONG module mautrix-meta (import go.mau.fi/mautrix-meta/pkg/... tự khớp)

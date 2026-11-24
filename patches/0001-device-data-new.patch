@@ -1,0 +1,12 @@
+--- a/bridge-e2ee/bridge/client.go
++++ b/bridge-e2ee/bridge/client.go
+@@ -1297,4 +1297,9 @@
+ func NewDeviceStoreFromData(dataStr string) (*DeviceStore, error) {
++	// bizcity-fb-bridge: "new" creates a fresh device in memory; its state leaves only through the
++	// deviceDataChanged event (the parent encrypts and stores it), never as a plaintext file.
++	if dataStr == "new" {
++		return newDeviceStoreMemoryOnly(cryptorand.Reader)
++	}
+ 	ds := newEmptyDeviceStore("")
+ 	var deviceJSON DeviceJSON
+ 	if err := json.Unmarshal([]byte(dataStr), &deviceJSON); err != nil {
